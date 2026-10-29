@@ -30,22 +30,7 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
-	// All fixtures, Go test temporary directories, and govips profile files stay
-	// inside the project rather than using the host's shared temporary folder.
-	scratch, err := os.MkdirTemp(".", ".processing-test-")
-	if err != nil {
-		panic(err)
-	}
-	abs, err := filepath.Abs(scratch)
-	if err != nil {
-		panic(err)
-	}
-	if err := os.Setenv("TMPDIR", abs); err != nil {
-		panic(err)
-	}
-	code := m.Run()
-	_ = os.RemoveAll(scratch)
-	os.Exit(code)
+	os.Exit(m.Run())
 }
 
 func fixture(t *testing.T, format string, alpha bool) (string, image.Image) {

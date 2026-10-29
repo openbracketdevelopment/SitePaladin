@@ -392,7 +392,11 @@ components:
         width: {type: integer, minimum: 1}
         height: {type: integer, minimum: 1}
         bytes: {type: integer, format: int64, minimum: 1}
-        duration_ms: {type: integer, format: int64, minimum: 0}
+        duration_ms:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Measured resizing, encoding, and writing time
         url: {type: string, format: uri-reference}
         original_bytes: {type: integer, format: int64, minimum: 1}
         original_width: {type: integer, minimum: 1}
@@ -432,9 +436,24 @@ components:
         output_count: {type: integer}
         output_bytes: {type: integer, format: int64}
         processing_seconds: {type: integer}
+    FormatInfo:
+      type: object
+      required: [id, extension, mime, transparency, encoder, available, options]
+      properties:
+        id: {$ref: '#/components/schemas/Format'}
+        extension: {type: string}
+        mime: {type: string}
+        transparency: {type: boolean}
+        encoder: {type: string}
+        available:
+          type: boolean
+          description: Required format smoke checks passed in the last probe
+        options:
+          type: array
+          items: {type: string}
     Capabilities:
       type: object
-      required: [service_version, pipeline_version, accepted_inputs, configured_outputs, available_outputs, profiles, limits, public_variants]
+      required: [service_version, pipeline_version, accepted_inputs, configured_outputs, available_outputs, formats, profiles, limits, public_variants]
       properties:
         service_version: {type: string}
         pipeline_version: {type: string}
@@ -447,6 +466,9 @@ components:
         available_outputs:
           type: array
           items: {$ref: '#/components/schemas/Format'}
+        formats:
+          type: array
+          items: {$ref: '#/components/schemas/FormatInfo'}
         profiles:
           type: object
           additionalProperties: {$ref: '#/components/schemas/Profile'}

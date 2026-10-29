@@ -116,6 +116,9 @@ func Probe(ctx context.Context) error {
 		return ErrUnavailable
 	}
 	cmd := exec.CommandContext(ctx, exe, "internal-probe")
+	// CommandContext hard-kills the native child at its deadline; inherited
+	// stdout/stderr pipes may delay Wait by at most another two seconds.
+	cmd.WaitDelay = 2 * time.Second
 	// No image bytes or native diagnostics are exposed to callers or logs.
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	if err := cmd.Run(); err != nil {
@@ -147,6 +150,7 @@ func execute(ctx context.Context, command string, req request, base string) (res
 		return response{}, ErrUnavailable
 	}
 	cmd := exec.CommandContext(ctx, exe, command, input, result)
+	cmd.WaitDelay = 2 * time.Second
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {

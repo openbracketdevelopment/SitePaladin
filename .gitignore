@@ -32,3 +32,6 @@ rustc-ice-*.txt
 /coverage.out
 __pycache__/
 *.pyc
+.visual-proof/
+.processing-test-*/
+.deployment*

@@ -85,7 +85,7 @@ Poll `status_url` until `succeeded` or `failed`, with a deadline. States are
 counts, not a fabricated percentage; native work need not produce smooth
 progress. GET `/v1/images/{id}` returns metadata, authenticated `original_url`
 and complete `outputs` only after successful publication. Every output reports
-format, dimensions, bytes, encode duration, URL, whether smaller, signed
+format, dimensions, bytes, per-output processing duration, URL, whether smaller, signed
 `percent_size_difference` and `includes_resizing`. Negative size difference means
 smaller. Resized savings include resizing; outputs may be larger than originals.
 GET `/v1/images?limit=20&status=succeeded` returns `{images,next_cursor}`; pass
@@ -97,6 +97,10 @@ image deletion. Without a key, identical content is a separate image.
 Errors are `{"error":{"code":"…","message":"…"}}`; expect 400, 401, 404, 409,
 413, 422 and 503. Retry transient infrastructure/capacity failures with bounded
 backoff and idempotency; do not retry permanent invalid inputs indefinitely.
+The API has a fixed 60-second total request-read deadline, including the upload
+body (and a 5-second header deadline). The byte ceiling is not a bandwidth or
+completion guarantee: slow uploads may time out before reaching it. Reverse
+proxies can impose additional limits.
 
 `examples/server-upload.mjs` is a Node.js 22+ server-only upload/poll example.
 `examples/nextjs-picture.tsx` is a scoped App Router **server component**, not a
@@ -107,6 +111,13 @@ a browser. Never prefix the key with `NEXT_PUBLIC_`. The snippet uses plain
 `picture`/`source`/`img`, responsive `srcset`/`sizes`, intrinsic dimensions, and an
 optimized original-format fallback. It never uses the authenticated original as
 a browser fallback and avoids Next Image double optimization.
+After your trusted server-side multipart upload returns `job_id`, call the
+snippet's exported `waitForByteDownJob(job_id)` helper (120-second bounded
+authenticated polling, no response caching), then render
+`<ByteDownPicture id={completed.image_id} alt="Description" />` using its result.
+Do not expose that helper as an unauthenticated server action. The standalone
+`server-upload.mjs` demonstrates the complete executable upload/poll workflow;
+the TSX is a scoped integration example, not a tested full Next.js application.
 
 Variants are private by default. `PUBLIC_VARIANTS=true` makes every published
 variant available to anyone who knows its URL. Opaque IDs are not access control.
@@ -192,6 +203,8 @@ checks; these byte ceilings are **not native allocation limits**. Container
 resource limits remain necessary. Horizontal workers need the same PostgreSQL
 and a coherent shared filesystem; multi-host/network-filesystem deployment has
 not been qualified.
+Native deadlines may be followed by up to two seconds of subprocess-pipe cleanup
+waiting; they are not an exact end-to-end HTTP/job latency guarantee.
 
 ## TLS, health and operations
 
@@ -240,7 +253,8 @@ Restore into a **fresh separate Compose project/empty volumes** with matching
 application and PostgreSQL versions and correct `.env`:
 
 ```sh
-docker compose up -d db
+export COMPOSE_PROJECT_NAME=bytedown-restore  # Must be a new, unused project name.
+docker compose up -d --wait --wait-timeout 60 db
 docker compose run --rm --no-deps storage-init
 docker compose run --rm --no-deps --entrypoint tar api \
   -C /data -xzf - < backups/images.tar.gz
@@ -251,6 +265,8 @@ docker compose up -d
 
 Restore only trusted archives. Tar runs as UID10001 into the initialized writable
 volume; bind mounts, if substituted, must have matching ownership.
+Keep this project name selected while verifying the restored stack; do not point
+these restore commands at the original installation's volumes.
 Wait for `db` to be healthy before `pg_restore`. Do not start API/worker before
 both restores succeed. Verify readiness, image listing, original downloads and
 variant downloads; expired in-flight leases should be reclaimed by workers.

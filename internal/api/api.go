@@ -146,7 +146,7 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 		"service_version": Version, "pipeline_version": processing.PipelineVersion,
 		"accepted_inputs": []string{"jpeg", "png"}, "configured_outputs": configured,
 		"available_outputs": available, "formats": registry,
-		"profiles":          s.Config.Profiles, "limits": s.Config.Limits, "public_variants": s.Config.PublicVariants,
+		"profiles": s.Config.Profiles, "limits": s.Config.Limits, "public_variants": s.Config.PublicVariants,
 	})
 }
 
