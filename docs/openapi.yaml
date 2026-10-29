@@ -1,0 +1,454 @@
+openapi: 3.0.3
+info:
+  title: ByteDown
+  version: 0.1.0
+  description: |
+    Trusted server-side JPEG/PNG upload and asynchronous image optimization.
+    All /v1 routes require a server-side API key. Originals always require it.
+    Media is private unless the operator explicitly enables PUBLIC_VARIANTS.
+    Outputs become visible only after the entire job publishes successfully.
+servers:
+  - url: http://127.0.0.1:8080
+security:
+  - bearerAuth: []
+paths:
+  /health/live:
+    get:
+      operationId: liveness
+      security: []
+      responses:
+        '200':
+          description: Process is alive (not a worker or dependency guarantee)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /health/ready:
+    get:
+      operationId: readiness
+      security: []
+      responses:
+        '200':
+          description: Database and writable storage passed; codec smoke check passed (cached up to 30 seconds)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/capabilities:
+    get:
+      operationId: capabilities
+      responses:
+        '200':
+          description: Effective operator configuration and supported encoders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Capabilities'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/images:
+    post:
+      operationId: uploadImage
+      description: |
+        Validates static JPEG/PNG; preserves original bytes and queues work.
+        No remote URL imports. Same idempotency key + content + resolved profile
+        returns the existing IDs; conflicting reuse returns 409. Keys remain
+        reserved until deletion. Filename and declared MIME are not trusted.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          description: Optional opaque key, no surrounding whitespace
+          schema:
+            type: string
+            maxLength: 200
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              additionalProperties: false
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: One static JPEG/PNG, default ceiling 20 MiB
+                profile:
+                  type: string
+                  default: web
+                  description: Operator-defined named profile
+            encoding:
+              file:
+                contentType: image/jpeg, image/png
+      responses:
+        '202':
+          description: Accepted or idempotently replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Accepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Idempotency key conflicts with existing content/settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Upload exceeds configured byte ceiling
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Invalid image, unsupported color/animation/format, resource limit or unknown profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    get:
+      operationId: listImages
+      parameters:
+        - in: query
+          name: cursor
+          description: Opaque next_cursor from a previous page
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/Status'
+      responses:
+        '200':
+          description: A page of image metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [images, next_cursor]
+                properties:
+                  images:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Image'
+                  next_cursor:
+                    type: string
+                    description: Empty when no following page remains
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/images/{image_id}:
+    parameters:
+      - $ref: '#/components/parameters/ImageID'
+    get:
+      operationId: getImage
+      responses:
+        '200':
+          description: Image metadata; outputs empty until complete publication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Image'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    delete:
+      operationId: deleteImage
+      description: |
+        Immediately removes database visibility and fences active workers.
+        Filesystem cleanup is best effort and reconciled; backups/public caches
+        may retain copies. This is not a secure-erase promise.
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/images/{image_id}/original:
+    parameters:
+      - $ref: '#/components/parameters/ImageID'
+    get:
+      operationId: downloadOriginal
+      description: Authenticated immutable original, never a public browser fallback
+      responses:
+        '200':
+          description: Exactly the accepted file bytes
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+        '206':
+          description: Partial original bytes for a valid HTTP Range request
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+        '304':
+          description: Not modified
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '416':
+          description: Requested range not satisfiable
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/jobs/{job_id}:
+    parameters:
+      - in: path
+        name: job_id
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getJob
+      description: Poll with bounded backoff; generated/planned are counts, not a percent
+      responses:
+        '200':
+          description: Durable job state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /media/{asset_id}:
+    parameters:
+      - in: path
+        name: asset_id
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: downloadVariant
+      description: |
+        Completed immutable generated bytes. Anonymous requests succeed only
+        when PUBLIC_VARIANTS=true; otherwise bearerAuth is required.
+        Public caches can outlive deletion.
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Variant bytes
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+            image/avif:
+              schema: {type: string, format: binary}
+        '206':
+          description: Partial variant bytes for a valid HTTP Range request
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+            image/avif:
+              schema: {type: string, format: binary}
+        '304':
+          description: Not modified
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '416':
+          description: Requested range not satisfiable
+        '503':
+          $ref: '#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API_KEY, at least 32 characters; keep exclusively server-side
+  parameters:
+    ImageID:
+      in: path
+      name: image_id
+      required: true
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Malformed request or invalid pagination
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Unauthorized:
+      description: Missing or invalid server credentials
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotFound:
+      description: Resource absent, deleted, or variant not published
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Unavailable:
+      description: Infrastructure unavailable or validation capacity exhausted; retry later
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [ok]}
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string, description: Sanitized public diagnostic}
+    Status:
+      type: string
+      enum: [queued, processing, succeeded, failed]
+    Format:
+      type: string
+      enum: [jpeg, png, webp, avif]
+    Accepted:
+      type: object
+      required: [image_id, job_id, status_url]
+      properties:
+        image_id: {type: string}
+        job_id: {type: string}
+        status_url: {type: string, format: uri-reference}
+    Job:
+      type: object
+      required: [id, image_id, status, generated, planned, error_code, error_message, processing_ms]
+      properties:
+        id: {type: string}
+        image_id: {type: string}
+        status: {$ref: '#/components/schemas/Status'}
+        generated: {type: integer, minimum: 0}
+        planned: {type: integer, minimum: 1}
+        error_code: {type: string, description: Empty unless failure has a public diagnostic}
+        error_message: {type: string}
+        processing_ms: {type: integer, format: int64, minimum: 0}
+    Image:
+      type: object
+      required: [id, job_id, status, format, width, height, bytes, created_at, original_url, outputs]
+      properties:
+        id: {type: string}
+        job_id: {type: string}
+        status: {$ref: '#/components/schemas/Status'}
+        format: {type: string, enum: [jpeg, png]}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+        bytes: {type: integer, format: int64, minimum: 1}
+        created_at: {type: string, format: date-time}
+        original_url: {type: string, format: uri-reference}
+        outputs:
+          type: array
+          description: Empty until all outputs publish successfully
+          items: {$ref: '#/components/schemas/Output'}
+    Output:
+      type: object
+      required: [id, format, width, height, bytes, duration_ms, url, original_bytes, original_width, original_height, smaller, percent_size_difference, includes_resizing]
+      properties:
+        id: {type: string}
+        format: {$ref: '#/components/schemas/Format'}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+        bytes: {type: integer, format: int64, minimum: 1}
+        duration_ms: {type: integer, format: int64, minimum: 0}
+        url: {type: string, format: uri-reference}
+        original_bytes: {type: integer, format: int64, minimum: 1}
+        original_width: {type: integer, minimum: 1}
+        original_height: {type: integer, minimum: 1}
+        smaller: {type: boolean}
+        percent_size_difference:
+          type: number
+          description: Signed (output bytes - original bytes) / original bytes * 100; negative means smaller
+        includes_resizing:
+          type: boolean
+          description: True when output dimensions differ from the original
+    Profile:
+      type: object
+      required: [widths, formats, include_source, jpeg_quality, webp_quality, webp_effort, avif_quality, avif_effort]
+      additionalProperties: false
+      properties:
+        widths:
+          type: array
+          description: Strictly increasing; no upscaling
+          items: {type: integer, minimum: 1}
+        formats:
+          type: array
+          items: {$ref: '#/components/schemas/Format'}
+        include_source: {type: boolean}
+        jpeg_quality: {type: integer, minimum: 1, maximum: 100}
+        webp_quality: {type: integer, minimum: 1, maximum: 100}
+        webp_effort: {type: integer, minimum: 0, maximum: 6}
+        avif_quality: {type: integer, minimum: 1, maximum: 100}
+        avif_effort: {type: integer, minimum: 0, maximum: 9}
+    Limits:
+      type: object
+      required: [upload_bytes, pixels, dimension, output_count, output_bytes, processing_seconds]
+      properties:
+        upload_bytes: {type: integer, format: int64}
+        pixels: {type: integer, format: int64}
+        dimension: {type: integer}
+        output_count: {type: integer}
+        output_bytes: {type: integer, format: int64}
+        processing_seconds: {type: integer}
+    Capabilities:
+      type: object
+      required: [service_version, pipeline_version, accepted_inputs, configured_outputs, available_outputs, profiles, limits, public_variants]
+      properties:
+        service_version: {type: string}
+        pipeline_version: {type: string}
+        accepted_inputs:
+          type: array
+          items: {type: string, enum: [jpeg, png]}
+        configured_outputs:
+          type: array
+          items: {$ref: '#/components/schemas/Format'}
+        available_outputs:
+          type: array
+          items: {$ref: '#/components/schemas/Format'}
+        profiles:
+          type: object
+          additionalProperties: {$ref: '#/components/schemas/Profile'}
+        limits: {$ref: '#/components/schemas/Limits'}
+        public_variants: {type: boolean}

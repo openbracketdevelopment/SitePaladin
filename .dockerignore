@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+data
+backups
+demo-output
+bytedown
+*.test
+*.log
+**/__pycache__
+.deployment*

@@ -1,0 +1,81 @@
+Third-party licensing and native codecs
+
+ByteDown's [MIT license](../LICENSE), copyright 2026 Tam, covers ByteDown code,
+not the entire container or its third-party libraries. Preserve that existing
+notice. This inventory is guidance, not legal advice or a patent clearance.
+
+## Go dependencies
+
+Exact versions, including indirect dependencies, are in `go.mod`/`go.sum`.
+
+| Component | License/source |
+|---|---|
+| Go runtime and standard library | [BSD-3-Clause](https://go.dev/LICENSE), Go patent grant |
+| govips/v2 | [MIT](https://github.com/davidbyttow/govips/blob/v2.20.0/LICENSE) |
+| pgx/v5 | [MIT](https://github.com/jackc/pgx/blob/v5.11.0/LICENSE) |
+| pgpassfile, pgservicefile, puddle/v2 | MIT, respective github.com/jackc repositories |
+| golang.org/x/image, x/net, x/sync, x/text | BSD-3-Clause, Go patent grant |
+
+The Docker build copies Go and module LICENSE/NOTICE/PATENTS files into
+`/usr/share/doc/bytedown/third-party/`; the application's license is at
+`/usr/share/doc/bytedown/LICENSE`. The complete module list can be inspected with
+`go list -m all`; the compiled binary's build metadata with `go version -m`.
+Dependencies used only for tests may not ship in the runtime.
+
+## Dynamically linked native software
+
+Debian bookworm provides libvips and its codec/color dependencies. The container
+keeps Debian's copyright/license records in `/usr/share/doc/<package>/copyright`
+and common license texts in `/usr/share/common-licenses`. These package records
+are authoritative for the actual installed build and include bundled code and
+exceptions omitted from this high-level table.
+
+| Component | Primary upstream licensing |
+|---|---|
+| libvips | LGPL-2.1-or-later |
+| libheif | LGPL-3.0-or-later for the library; examples have different licenses |
+| libaom (AV1) | BSD-2-Clause plus Alliance for Open Media patent license; bundled exceptions |
+| libwebp | BSD-style license plus additional patent grant |
+| libjpeg-turbo | IJG, BSD-style, and zlib terms for different components |
+| libpng | libpng license |
+| zlib | zlib license |
+| Little CMS 2 | MIT |
+| GLib and related native runtime libraries | LGPL and component-specific terms |
+| PostgreSQL | PostgreSQL License |
+| Debian base, glibc, OpenSSL, CA certificates and transitive packages | Mixed licenses; inspect installed package records |
+
+libvips runtime uses dynamic linking; do not describe the resulting executable as
+an entirely MIT-licensed static binary. If distributing a container, retain all
+notices and comply with the applicable LGPL/GPL source, modification, relinking
+and installation-information requirements. Obtain corresponding Debian source
+packages for the exact distributed binary versions through Debian's source
+repositories, preserve/review them and any patches as required; this inventory
+and an upstream URL alone do not satisfy every redistribution obligation.
+Some automatically installed libvips dependencies may have additional copyleft
+terms even if ByteDown does not expose their file formats.
+
+## Format and patent boundaries
+
+The initial release accepts only static JPEG/PNG and generates reviewed
+JPEG/PNG/WebP/AVIF outputs. libheif supplies the AVIF container path, using AV1
+encoders/decoders available in Debian; this is not a promise to accept arbitrary
+HEIF/HEIC uploads. A library may include HEVC or other codecs that ByteDown does
+not expose. Neither an open-source license nor successful encoding settles
+patent obligations in every jurisdiction. Review deployment/distribution needs
+with appropriate counsel. Encoder availability is also not a browser-support
+guarantee.
+
+Startup performs actual required encode/decode smoke tests. To record deployed
+versions and inventory:
+
+```sh
+docker compose run --rm --no-deps api probe
+docker compose run --rm --no-deps --entrypoint sh api -c \
+  'bytedown version; dpkg-query -W'
+```
+
+Pinned base-image digests do not pin the live Debian package repository.
+Rebuilds can therefore install patched native package versions. Record image
+digests and package inventories for a release, review vulnerability notices, and
+update pins deliberately. No automatic arbitrary codec/plugin installation is
+performed at runtime.
