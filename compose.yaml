@@ -1,0 +1,99 @@
+name: bytedown
+
+x-app: &app
+  image: bytedown:local
+  build: .
+  init: true
+  stop_grace_period: 30s
+  user: "10001:10001"
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777,noexec,nosuid
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  environment: &environment
+    DATABASE_URL: "postgres://bytedown:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/bytedown?sslmode=disable"
+    API_KEY: "${API_KEY:?Set API_KEY in .env}"
+    STORAGE_DIR: /data
+    LISTEN: ":8080"
+    PUBLIC_VARIANTS: "${PUBLIC_VARIANTS:-false}"
+    CORS_ORIGINS: "${CORS_ORIGINS:-}"
+    WORKER_CONCURRENCY: "${WORKER_CONCURRENCY:-1}"
+    MAX_UPLOAD_BYTES: "${MAX_UPLOAD_BYTES:-20971520}"
+    MAX_PIXELS: "${MAX_PIXELS:-40000000}"
+    MAX_DIMENSION: "${MAX_DIMENSION:-20000}"
+    MAX_OUTPUT_COUNT: "${MAX_OUTPUT_COUNT:-17}"
+    MAX_OUTPUT_BYTES: "${MAX_OUTPUT_BYTES:-209715200}"
+    PROCESSING_SECONDS: "${PROCESSING_SECONDS:-120}"
+  volumes:
+    - images:/data
+  mem_limit: 1g
+  cpus: 2
+  pids_limit: 128
+
+services:
+  db:
+    image: postgres:17-bookworm@sha256:839fbb5a4942a7758dd93e18b42ea5649807491a0545b5eeeb8f0b8bb11857a5
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bytedown
+      POSTGRES_USER: bytedown
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bytedown -d bytedown"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+  storage-init:
+    <<: *app
+    user: "0:0"
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["chown 10001:10001 /data; chmod 0700 /data"]
+    healthcheck:
+      disable: true
+    restart: "no"
+  migrate:
+    <<: *app
+    command: ["migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true
+    restart: "no"
+  api:
+    <<: *app
+    command: ["api"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  worker:
+    <<: *app
+    command: ["worker"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bytedown", "health", "worker"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  postgres:
+  images:
