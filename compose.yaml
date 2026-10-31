@@ -1,0 +1,31 @@
+services:
+  sitepaladin:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: sqlite:///data/sitepaladin.db
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+    volumes:
+      - sitepaladin-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  sitepaladin-data:

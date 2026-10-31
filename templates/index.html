@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SitePaladin · Website audit</title>
+  <link rel="stylesheet" href="/static/site.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">SitePaladin</a>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="button secondary" type="submit">Sign out</button>
+    </form>
+  </header>
+  <main class="container">
+    <section class="intro">
+      <p class="eyebrow">Self-hosted website auditor</p>
+      <h1>Find link and metadata issues</h1>
+      <p>Scan server-returned HTML within explicit limits. Findings are observations, not search-ranking predictions.</p>
+    </section>
+    <section class="card" aria-labelledby="start-scan-title">
+      <h2 id="start-scan-title">Start a scan</h2>
+      <form method="post" action="/scans" class="scan-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="site-url">Website URL</label>
+        <input id="site-url" name="url" type="url" placeholder="https://example.com" inputmode="url" required>
+        <label for="max-pages">Maximum pages <span class="hint">(operator limit: {{ max_pages }})</span></label>
+        <input id="max-pages" name="max_pages" type="number" min="1" max="{{ max_pages }}" value="{{ max_pages }}" required>
+        <button type="submit" {% if active_scan %}disabled{% endif %}>Start scan</button>
+      </form>
+      <p class="hint">Only public HTTP(S) destinations are checked. Robots exclusions and ambiguous robots failures are skipped.</p>
+    </section>
+    <section class="history" aria-labelledby="history-title">
+      <h2 id="history-title">Scan history</h2>
+      {% if scans.is_empty() %}
+      <p>No scans yet. Start one above to create a saved report.</p>
+      {% else %}
+      <ul class="scan-list">
+        {% for scan in scans %}
+        <li class="card scan-row">
+          <div>
+            <a class="scan-url" href="/scans/{{ scan.id }}">{{ scan.seed_url }}</a>
+            <p class="muted">{{ scan.created_at }} · {{ scan.pages_checked }} pages · {{ scan.links_checked }} link destinations</p>
+          </div>
+          <span class="status status-{{ scan.state }}">{{ scan.state }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

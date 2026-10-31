@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scan {{ scan.id }} · SitePaladin</title>
+  <link rel="stylesheet" href="/static/site.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar no-print">
+    <a class="brand" href="/">SitePaladin</a>
+    <nav aria-label="Report actions">
+      <a class="button secondary" href="/scans/{{ scan.id }}/export.json">Export JSON</a>
+      <a class="button secondary" href="/scans/{{ scan.id }}/export.csv">Export CSV</a>
+      <button class="button secondary" type="button" data-print>Print / Save as PDF</button>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="button secondary" type="submit">Sign out</button>
+      </form>
+    </nav>
+  </header>
+  <main class="container report" data-scan-id="{{ scan.id }}">
+    <p class="eyebrow">SitePaladin report</p>
+    <h1>Website audit</h1>
+    <p class="target-url">{{ scan.seed_url }}</p>
+    <dl class="summary-grid">
+      <div><dt>Scan state</dt><dd><span class="status status-{{ scan.state }}">{{ scan.state }}</span></dd></div>
+      <div><dt>Started</dt><dd>{{ scan.started_at.as_deref().unwrap_or("Not started") }}</dd></div>
+      <div><dt>Finished</dt><dd>{{ scan.finished_at.as_deref().unwrap_or("In progress") }}</dd></div>
+      <div><dt>Duration</dt><dd>{% if let Some(seconds) = scan.duration_seconds %}{{ seconds }} seconds{% else %}Not started{% endif %}</dd></div>
+      <div><dt>Pages checked</dt><dd><span id="pages-checked">{{ scan.pages_checked }}</span> / <span id="pages-discovered">{{ scan.pages_discovered }}</span></dd></div>
+      <div><dt>Link destinations checked</dt><dd id="links-checked">{{ scan.links_checked }}</dd></div>
+      <div><dt>Page limit</dt><dd>{{ scan.max_pages }}</dd></div>
+      <div><dt>Issues</dt><dd>{{ issues }}</dd></div>
+      <div><dt>Warnings</dt><dd>{{ warnings }}</dd></div>
+      <div><dt>Inconclusive / not checked</dt><dd>{{ inconclusive }}</dd></div>
+    </dl>
+    <details class="limits">
+      <summary>Applied scan limits</summary>
+      <ul>
+        <li>Maximum pages: {{ scan.limits.max_pages }}</li>
+        <li>Configured maximum global concurrency: {{ scan.limits.max_concurrency }}</li>
+        <li>Configured maximum per origin: {{ scan.limits.max_per_origin }}</li>
+        <li>Minimum delay per origin: {{ scan.limits.min_origin_delay_ms }} ms</li>
+        <li>Request timeout: {{ scan.limits.request_timeout_secs }} seconds</li>
+        <li>Maximum duration: {{ scan.limits.max_scan_duration_secs }} seconds</li>
+        <li>Maximum response body: {{ scan.limits.max_response_bytes }} bytes</li>
+        <li>Maximum unique link destinations: {{ scan.limits.max_unique_links }}</li>
+        <li>Maximum link occurrences: {{ scan.limits.max_link_occurrences }}</li>
+        <li>Maximum query variants per path: {{ scan.limits.max_query_variants_per_path }}</li>
+        <li>Maximum robots origins cached: {{ scan.limits.max_robots_origins }}</li>
+        <li>Redirect hop limit: {{ scan.limits.max_redirects }}</li>
+        <li>Allowed HTTP(S) ports:
+          {% for port in scan.limits.allowed_ports %}{% if !loop.first %}, {% endif %}{{ port }}{% endfor %}
+        </li>
+      </ul>
+    </details>
+    {% if scan.truncated %}
+    <p class="notice warning">This scan was truncated by a configured limit or duration. Findings cover only pages that were scanned.</p>
+    {% endif %}
+    {% if let Some(error) = scan.error %}
+    <p class="notice warning">{{ error }}</p>
+    {% endif %}
+    {% if scan.state == "queued" || scan.state == "running" %}
+    <div class="progress-actions no-print">
+      <p id="scan-status" role="status">Scan {{ scan.state }}. Page count is not known in advance.</p>
+      <form method="post" action="/scans/{{ scan.id }}/cancel">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="danger" type="submit">Cancel scan</button>
+      </form>
+    </div>
+    {% endif %}
+    <p class="notice">The crawler checks server-returned HTML only. It does not execute JavaScript, check fragment targets, or inspect HTTP Link canonical headers. Different subdomains are external. Results are observations from this scan, not guarantees of future availability.</p>
+    <section aria-labelledby="filters-title" class="no-print">
+      <h2 id="filters-title">Filter findings</h2>
+      <div class="filter-row" role="group" aria-label="Filter report">
+        <button type="button" class="filter-button active" data-filter="all">All</button>
+        <button type="button" class="filter-button" data-filter="issues">Issues</button>
+        <button type="button" class="filter-button" data-filter="warnings">Warnings</button>
+        <button type="button" class="filter-button" data-filter="links">Links</button>
+        <button type="button" class="filter-button" data-filter="metadata">Metadata</button>
+        <button type="button" class="filter-button" data-filter="inconclusive">Inconclusive</button>
+      </div>
+    </section>
+    <h2>Pages</h2>
+    {% if pages.is_empty() %}
+    <p>No page results are available yet.</p>
+    {% endif %}
+    <div id="pages-list">
+    {% for page in pages %}
+    <details class="page-card" open data-page>
+      <summary>
+        <span>{{ page.url }}</span>
+        <span class="status">{{ page.fetch_state }}{% if let Some(code) = page.status_code %} · HTTP {{ code }}{% endif %}</span>
+      </summary>
+      <div class="page-content">
+        <p>Final URL: {{ page.final_url.as_deref().unwrap_or("Unavailable") }} · Checked: {{ page.checked_at }}</p>
+        {% if page.redirect_chain != "[]" %}
+        <p>Redirect chain (each hop includes the observed HTTP status): {{ page.redirect_chain }}</p>
+        {% endif %}
+        <h3>Findings</h3>
+        {% if page.findings.is_empty() %}<p>No metadata findings recorded.</p>{% endif %}
+        <ul class="finding-list">
+          {% for finding in page.findings %}
+          <li class="finding" data-category="{{ finding.category }}" data-status="{{ finding.status }}">
+            <div class="finding-heading">
+              <strong>{{ finding.rule_id }}</strong>
+              <span class="badge">{{ finding.severity }} · {{ finding.status }}</span>
+            </div>
+            <p>{{ finding.explanation }}</p>
+            {% if !finding.evidence.is_empty() %}<p><strong>Evidence:</strong> {{ finding.evidence }}</p>{% endif %}
+            <p><strong>Suggested action:</strong> {{ finding.suggestion }}</p>
+          </li>
+          {% endfor %}
+        </ul>
+        <h3>Links</h3>
+        <p>{{ page.links.len() }} link occurrences. Repeated references share one destination check.</p>
+        <details class="link-details">
+          <summary>Show link occurrences</summary>
+          <ul class="link-list">
+            {% for link in page.links %}
+            <li class="link-row" data-category="links" data-status="{% if link.health.as_deref().unwrap_or("") == "inconclusive" %}inconclusive{% else %}{{ link.health.as_deref().unwrap_or("not_checked") }}{% endif %}">
+              <span class="badge">{{ link.classification }}{% if let Some(status) = link.health %} · {{ status }}{% endif %}{% if let Some(code) = link.status_code %} · HTTP {{ code }}{% endif %}</span>
+              {% if let Some(destination) = link.destination_url %}
+              <a href="{{ destination }}" target="_blank" rel="noopener noreferrer">{{ link.raw_href }}</a>
+              {% else %}
+              <span>{{ link.raw_href }}</span>
+              {% endif %}
+              {% if link.redirect_chain != "[]" %}<span>Redirect chain: {{ link.redirect_chain }}</span>{% endif %}
+              {% if let Some(fragment) = link.fragment %}<span class="muted">fragment #{{ fragment }} (target not checked)</span>{% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        </details>
+      </div>
+    </details>
+    {% endfor %}
+    </div>
+  </main>
+</body>
+</html>
