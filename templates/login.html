@@ -8,7 +8,7 @@
 </head>
 <body>
   <main class="auth-card">
-    <a class="brand" href="/login">SitePaladin</a>
+    <a class="brand" href="/login">SitePaladin <small class="brand-version">v{{ crate::APP_VERSION }}</small></a>
     <h1>Operator sign in</h1>
     <p>Sign in to manage scans and view saved reports.</p>
     {% if !error.is_empty() %}

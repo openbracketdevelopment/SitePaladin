@@ -35,6 +35,10 @@ reverse-proxy guidance.
 
 ## Development
 
+The app version is tracked in `Cargo.toml` under `[package].version` (currently
+`0.1.0`). The label next to the logo uses this value automatically at build time.
+After changing it, rebuild and restart the app to display the new version.
+
 ```sh
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings

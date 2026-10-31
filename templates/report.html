@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="topbar no-print">
-    <a class="brand" href="/">SitePaladin</a>
+    <a class="brand" href="/">SitePaladin <small class="brand-version">v{{ crate::APP_VERSION }}</small></a>
     <nav aria-label="Report actions">
       <a class="button secondary" href="/scans/{{ scan.id }}/export.json">Export JSON</a>
       <a class="button secondary" href="/scans/{{ scan.id }}/export.csv">Export CSV</a>

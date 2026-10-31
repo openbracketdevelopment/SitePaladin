@@ -28,6 +28,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .topbar a { color: white; }
 .topbar nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .brand { color: #102b40; font-weight: 800; font-size: 1.25rem; text-decoration: none; }
+.brand-version { font-size: .7rem; font-weight: 500; white-space: nowrap; }
 .topbar .brand { color: white; }
 .container { width: min(100% - 32px, 1080px); margin: 32px auto 64px; }
 .intro { margin: 0 0 24px; max-width: 720px; }

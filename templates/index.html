@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/">SitePaladin</a>
+    <a class="brand" href="/">SitePaladin <small class="brand-version">v{{ crate::APP_VERSION }}</small></a>
     <form method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button class="button secondary" type="submit">Sign out</button>

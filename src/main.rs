@@ -32,6 +32,8 @@ use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer, cookie::
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Clone)]
 struct AppState {
     pool: SqlitePool,
@@ -1037,6 +1039,67 @@ mod tests {
         .unwrap();
         assert!(!html.contains("<img"));
         assert!(html.contains("&#60;img"));
+    }
+
+    #[test]
+    fn all_pages_display_the_package_version_next_to_the_brand() {
+        let login = LoginTemplate {
+            csrf_token: "token".into(),
+            error: String::new(),
+        }
+        .render()
+        .unwrap();
+        let index = IndexTemplate {
+            csrf_token: "token".into(),
+            max_pages: 25,
+            scans: Vec::new(),
+            active_scan: false,
+        }
+        .render()
+        .unwrap();
+        let report = ReportTemplate {
+            csrf_token: "token".into(),
+            scan: ScanSummary {
+                id: 1,
+                seed_url: "https://example.test/".into(),
+                state: "completed".into(),
+                max_pages: 25,
+                limits: ScanLimits {
+                    max_pages: 25,
+                    max_concurrency: 4,
+                    max_per_origin: 2,
+                    min_origin_delay_ms: 250,
+                    request_timeout_secs: 15,
+                    max_scan_duration_secs: 600,
+                    max_response_bytes: 2_000_000,
+                    max_unique_links: 200,
+                    max_link_occurrences: 10_000,
+                    max_query_variants_per_path: 3,
+                    max_robots_origins: 256,
+                    max_redirects: 5,
+                    allowed_ports: vec![80, 443],
+                },
+                created_at: "2026-01-01T00:00:00Z".into(),
+                started_at: None,
+                finished_at: None,
+                error: None,
+                pages_discovered: 0,
+                pages_checked: 0,
+                links_checked: 0,
+                truncated: false,
+                duration_seconds: None,
+            },
+            pages: Vec::new(),
+            issues: 0,
+            warnings: 0,
+            inconclusive: 0,
+        }
+        .render()
+        .unwrap();
+        let expected = format!("SitePaladin <small class=\"brand-version\">v{APP_VERSION}</small>");
+        for html in [login, index, report] {
+            assert!(html.contains(&expected));
+        }
     }
 
     #[tokio::test]
