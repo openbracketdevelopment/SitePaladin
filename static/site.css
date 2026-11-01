@@ -114,6 +114,34 @@ button:disabled { background: #8295a3; cursor: not-allowed; }
 .page-content { padding: 0 16px 18px; }
 .finding-list, .link-list { display: grid; gap: 10px; }
 .finding, .link-row { padding: 12px; border: 1px solid #d5dfe6; border-radius: 8px; background: #fff; overflow-wrap: anywhere; }
+.finding, .link-row {
+  --result-background: #e8eef2;
+  --result-text: #243d4e;
+  --result-border: #667986;
+  border-left: 4px solid var(--result-border);
+}
+:is(.finding, .link-row)[data-status="issue"],
+.link-row:is([data-status="broken"], [data-status="server_error"], [data-status="redirect_loop"]) {
+  --result-background: #fbe0de;
+  --result-text: #78221e;
+  --result-border: #a52e28;
+}
+:is(.finding, .link-row)[data-status="warning"],
+.link-row:is([data-status="restricted"], [data-status="rate_limited"]) {
+  --result-background: #fff0c2;
+  --result-text: #653e00;
+  --result-border: #b8790c;
+}
+:is(.finding, .link-row)[data-status="pass"],
+.link-row:is([data-status="healthy"], [data-status="redirected"]) {
+  --result-background: #d9f3e5;
+  --result-text: #125b35;
+  --result-border: #21804d;
+}
+:is(.finding, .link-row) .badge {
+  background: var(--result-background);
+  color: var(--result-text);
+}
 .finding p { margin: 8px 0 0; }
 .finding-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
 .link-details { margin-top: 12px; }

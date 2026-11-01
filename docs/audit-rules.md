@@ -4,6 +4,13 @@ Findings are observations, not search-ranking predictions. Each finding has a
 stable rule ID, category, severity, status, evidence, explanation, and
 suggested action. Statuses are `pass`, `warning`, `issue`, and `not_checked`.
 
+Reports color-code badges and card borders by status: red for issues, amber
+for warnings, green for passes, and gray for inconclusive or unchecked results.
+Link results use red for broken links, server errors, and redirect loops;
+amber for restricted or rate-limited access; green for healthy or successfully
+redirected destinations; and gray for other outcomes. Text labels remain
+visible, including when printing without color.
+
 ## Titles
 
 - `title.missing`, `title.empty`, and `title.multiple` report missing, blank,
