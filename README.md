@@ -33,6 +33,9 @@ secret before use; there is no default password. See [self-hosting](docs/self-ho
 for hash generation, Docker, the fixture demo, tests, backups, upgrades, and
 reverse-proxy guidance.
 
+Logins survive restarts and expire after 12 hours of inactivity. Keep the
+database private; rotate `SESSION_SECRET` and restart to invalidate all logins.
+
 ## Development
 
 The app version is tracked in `Cargo.toml` under `[package].version` (currently

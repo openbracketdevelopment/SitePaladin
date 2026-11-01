@@ -22,6 +22,14 @@ startup. The session cookie is HttpOnly, SameSite=Lax, and signed using the
 configured session secret. Set `COOKIE_SECURE=true` when HTTPS terminates in a
 trusted reverse proxy. Do not expose the app directly to an untrusted network.
 
+Sessions are stored in SQLite and survive application restarts. They expire
+after 12 hours of inactivity; expired records are removed on startup and every
+five minutes. Signing out deletes the session. Keep the database private because
+it now contains session credentials as well as reports. Rotate `SESSION_SECRET`
+and restart to invalidate all browser cookies, especially after changing the
+operator password or restoring a backup. Cookies from the old in-memory store
+require one fresh sign-in after upgrading.
+
 The initial operator is configured with `OPERATOR_USERNAME` and
 `OPERATOR_PASSWORD_HASH`; there is no default password or registration flow.
 Keep `.env` and database backups private.
@@ -139,6 +147,11 @@ each redirect destination before connecting.
   denied; HTTP 404 for robots.txt permits crawling.
 - **No scan progress:** check application logs and SQLite write permissions.
   A process restart interrupts an active scan; partial pages remain available.
+- **robots.txt returns 403:** that origin is skipped deliberately. Check the
+  site's CDN/WAF rules if you control it; do not bypass denied robots access.
+- **Session record not found:** an expired or revoked cookie, an old pre-upgrade
+  login, or a database restore can cause this warning. Sign in again. Ordinary
+  restarts preserve current logins.
 - **Fixture URLs are rejected:** build both commands with `--features
   dev-fixtures` and set `ALLOW_LOCAL_FIXTURE=true` only in the local demo
   environment.

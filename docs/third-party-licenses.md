@@ -5,7 +5,7 @@ it does not relicense third-party crates. Rust dependencies remain subject to
 their own licenses and copyright notices. `Cargo.lock` records the resolved
 dependency versions. No third-party source is copied into this repository.
 
-Direct runtime dependencies include Argon2, Askama, Axum, csv, dotenvy,
+Direct runtime dependencies include Argon2, async-trait, Askama, Axum, csv, dotenvy,
 futures-util, http, httpdate, rand_core, rpassword, robotstxt, Reqwest,
 Scraper, Serde, Serde JSON, SQLx, Tokio, Tokio Util, tower-sessions, tracing,
 tracing-subscriber, url, uuid, and time. Consult each resolved crate's license

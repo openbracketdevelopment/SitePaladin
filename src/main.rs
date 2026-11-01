@@ -1,6 +1,7 @@
 mod audit;
 mod config;
 mod crawler;
+mod session_store;
 
 use argon2::{
     Argon2,
@@ -17,6 +18,7 @@ use axum::{
 };
 use config::{Config, ScanLimits};
 use serde::{Deserialize, Serialize};
+use session_store::SqliteSessionStore;
 use sqlx::{Row, SqlitePool, sqlite::SqliteConnectOptions};
 use std::{
     collections::VecDeque,
@@ -28,7 +30,9 @@ use std::{
 };
 use tokio::{sync::Notify, time::sleep};
 use tokio_util::sync::CancellationToken;
-use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer, cookie::SameSite};
+#[cfg(test)]
+use tower_sessions::MemoryStore;
+use tower_sessions::{Expiry, Session, SessionManagerLayer, cookie::SameSite};
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
@@ -235,6 +239,11 @@ async fn run() -> Result<(), String> {
         .run(&pool)
         .await
         .map_err(|e| format!("database migration failed: {e}"))?;
+    let session_store = SqliteSessionStore::new(pool.clone());
+    session_store
+        .delete_expired()
+        .await
+        .map_err(|error| format!("could not clean expired sessions: {error}"))?;
     sqlx::query("UPDATE scans SET state='interrupted', finished_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'), error='Process restarted while scan was running; partial results were preserved.' WHERE state='running'")
         .execute(&pool).await.map_err(|e| format!("could not recover previous scans: {e}"))?;
 
@@ -266,12 +275,13 @@ async fn run() -> Result<(), String> {
         .route("/scans/{id}/export.csv", get(export_csv))
         .route_layer(middleware::from_fn(require_auth));
     let app = public.merge(protected).with_state(state.clone()).layer(
-        SessionManagerLayer::new(MemoryStore::default())
+        SessionManagerLayer::new(session_store.clone())
             .with_name("sitepaladin_session")
             .with_http_only(true)
             .with_same_site(SameSite::Lax)
             .with_secure(config.cookie_secure)
             .with_expiry(Expiry::OnInactivity(time::Duration::hours(12)))
+            .with_always_save(true)
             .with_signed(session_key),
     );
     let address: SocketAddr = format!("{}:{}", config.host, config.port)
@@ -281,16 +291,32 @@ async fn run() -> Result<(), String> {
         .await
         .map_err(|e| format!("could not listen on {address}: {e}"))?;
     tracing::info!(%address, "SitePaladin is listening");
-    axum::serve(listener, app)
+    let cleanup_shutdown = state.shutdown.clone();
+    let session_cleanup = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = cleanup_shutdown.cancelled() => break,
+                _ = sleep(Duration::from_secs(300)) => {
+                    if let Err(error) = session_store.delete_expired().await {
+                        tracing::error!(%error, "could not clean expired sessions");
+                    }
+                }
+            }
+        }
+    });
+    let server_result = axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             shutdown_signal().await;
             shutdown.cancel();
         })
         .await
-        .map_err(|e| format!("HTTP server failed: {e}"))?;
-    worker
-        .await
-        .map_err(|e| format!("scan worker failed: {e}"))?;
+        .map_err(|e| format!("HTTP server failed: {e}"));
+    state.shutdown.cancel();
+    let worker_result = worker.await;
+    let cleanup_result = session_cleanup.await;
+    server_result?;
+    worker_result.map_err(|e| format!("scan worker failed: {e}"))?;
+    cleanup_result.map_err(|error| format!("session cleanup task failed: {error}"))?;
     Ok(())
 }
 

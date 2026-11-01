@@ -28,7 +28,9 @@ an in-memory task resumes after restart.
 
 ## Security boundaries
 
-The login uses a configured Argon2 password hash and server-side sessions.
+The login uses a configured Argon2 password hash and SQLite-backed server-side
+sessions. Sessions survive restarts, expire after 12 hours of inactivity, and
+are deleted on logout. Expired records are cleaned on startup and periodically.
 State-changing requests require a session CSRF token. Cookie security follows
 the configured HTTPS deployment mode. Routes containing scan data are behind
 the authentication boundary.

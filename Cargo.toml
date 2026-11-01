@@ -12,6 +12,7 @@ dev-fixtures = []
 
 [dependencies]
 argon2 = "0.5"
+async-trait = "0.1"
 askama = "0.14"
 axum = { version = "0.8", features = ["form", "json", "macros"] }
 csv = "1.3"
